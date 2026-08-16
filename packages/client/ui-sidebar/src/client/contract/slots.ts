@@ -7,11 +7,12 @@
  * `sidebar.settings` registrant's (ui-settings), followed by optional footer
  * actions in `sidebar.footer.action`.
  */
-import type { PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls ui-layout's SlotMap merge (the 'sidebar' entry) into every
 // program that sees this contract, so PropsRuntime<'sidebar'> resolves.
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import type { WorkspaceId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SnapshotStore, WorkspaceId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { BrandSnapshot } from '@deepseek-ai/dsh-client-ui-brand/client'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
@@ -76,14 +77,18 @@ export type SidebarRootInjected = {
   startSession: (workspaceId?: WorkspaceId) => void
   /** Toggle the sidebar column through the layout service. */
   toggleSidebar: () => void
+  hooks: {
+    /** Shared brand snapshot (custom name/logo) bound as useBrand. */
+    brand: SnapshotStore<BrandSnapshot>
+  }
 }
 
 /**
  * Full component props: layout owner state/actions plus the declared holes'
- * render shares, this package's injected callbacks, and the standard locale
- * seat. No store is registered.
+ * render shares, this package's injected callbacks and brand hook, and the
+ * standard locale seat. No slot-owned store is registered.
  */
 export type SidebarRootComponentProps =
   PropsRuntime<'sidebar'>
   & PropsRenderSlots<'sidebar.workspaces' | 'sidebar.settings' | 'sidebar.footer.action'>
-  & SidebarRootInjected & PropsLocale<'sidebar'>
+  & InjectFace<SidebarRootInjected> & PropsLocale<'sidebar'>

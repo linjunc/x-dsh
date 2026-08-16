@@ -242,6 +242,7 @@ function mount(
     useWorkspaces: bindSnapshotSelector(workspaces),
     useProjection: (() => undefined),
     useComposerBlock: select => select(options.composerBlock),
+    useBrand: bindSnapshotSelector(createSnapshotStore({ name: '', logo: '', headline: '' })),
     useInput,
     inputActions,
     renderSlot,
@@ -258,10 +259,21 @@ function mount(
 }
 
 describe('Hero chrome', () => {
-  it('renders the English preview badge through the hero locale seat', () => {
+  it('renders the shipped headline and mark while no override is set', () => {
     const view = render(<HeroShell t={makeTranslate(en, commonEn)} />)
     expect(view.getByText('Into the Unknown')).toBeTruthy()
-    expect(view.getByText('Preview')).toBeTruthy()
+    // The shipped FishLogo rides the headline; no custom logo is set.
+    expect(view.container.querySelector('svg')).not.toBeNull()
+    expect(view.container.querySelector('img')).toBeNull()
+  })
+
+  it('renders a custom headline and brand logo in place of the shipped mark', () => {
+    const view = render(
+      <HeroShell t={makeTranslate(en, commonEn)} headline="Acme" logo="data:image/png;base64,eA==" />,
+    )
+    expect(view.getByText('Acme')).toBeTruthy()
+    const logo = view.container.querySelector('img')
+    expect(logo?.getAttribute('src')).toBe('data:image/png;base64,eA==')
   })
 })
 
@@ -286,20 +298,21 @@ describe('ConversationRoot resident composer', () => {
     expect(seat('conversation.input.plan')).toEqual({ locked: true })
   })
 
-  it('lets the no-workspace posture win over a block', () => {
-    // Picking a workspace is the earlier prerequisite; naming a model first
-    // would send the user somewhere they cannot act yet.
+  it('keeps a workspace-less session chatable so adopting a Workspace is optional', () => {
+    // A blank session no Workspace accounts for is not inert: the composer
+    // accepts text instead of demanding a workspace pick. The hero's
+    // Workspace chip stays mounted (heroWorkspaceRow) as the optional way to
+    // attach a project, and a raised block applies normally — the model is the
+    // only prerequisite once a session exists.
     const b = mount(conversationSnapshot({ composerPhase: 'blank' }), [], undefined, {
       summaryBlank: true,
-      composerBlock: { reason: 'select a model first' },
     })
     const box = b.view.getByRole('textbox') as HTMLTextAreaElement
     expect(box.disabled).toBe(false)
-    expect(box.readOnly).toBe(true)
-    expect(box.getAttribute('aria-haspopup')).toBe('menu')
-    expect(box.placeholder).not.toBe('select a model first')
-    const modelSeat = b.seatOwners.filter(call => call.key === 'conversation.input.model').at(-1)?.owner
-    expect(modelSeat).toEqual({ locked: true })
+    expect(box.readOnly).toBe(false)
+    expect(box.getAttribute('aria-haspopup')).toBeNull()
+    // The hero Workspace chip is still mounted for an optional attach.
+    expect(b.view.getByRole('button', { name: '选择工作区' })).toBeTruthy()
   })
 
   it('keeps composer text in the machine, mirrors to the chat store, and submits through the sink', () => {
@@ -363,7 +376,6 @@ describe('ConversationRoot resident composer', () => {
     expect(host).not.toBeNull()
     expect(header?.getAttribute('aria-hidden')).toBe('true')
     expect(b.view.getByText('探索未至之境')).toBeTruthy()
-    expect(b.view.getByText('预览版')).toBeTruthy()
     expect(b.view.queryByTestId('view-chat')).toBeNull()
     // The same machine-backed textarea is live in the hero, and the
     // persistence mirror stays bound (ConversationSession mounts chrome-hidden

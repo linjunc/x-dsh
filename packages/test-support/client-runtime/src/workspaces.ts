@@ -62,6 +62,18 @@ export class TestWorkspaces implements IWorkspaces {
   }
 
   /**
+   * Workspace-less connect (recorded). The default echoes a fresh session id;
+   * stub for reuse or failure flows.
+   * @returns the connected session id.
+   */
+  async connectWorkspaceless(): Promise<SessionId> {
+    this.calls.push({ method: 'connectWorkspaceless', args: [] })
+    const stub = this.stubs.get('connectWorkspaceless')
+    if (stub !== undefined) return await (stub() as Promise<SessionId>)
+    return 'session-workspaceless' as SessionId
+  }
+
+  /**
    * New-session flow (recorded; stubbed behavior runs when installed).
    * @param workspaceId - optional explicit workspace target.
    */

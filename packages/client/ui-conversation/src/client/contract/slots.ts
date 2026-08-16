@@ -13,6 +13,7 @@ import type {
 import type { MarkdownFileMentions } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MessageId } from '@deepseek-ai/dsh-client-connection/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+import type { BrandSnapshot } from '@deepseek-ai/dsh-client-ui-brand/client'
 import type { ComposerBlock } from '../input/blocks.ts'
 import type {
   ComposerKeyboard, DraftAttachmentId, EditSelection, InputActions, InputNotice, InputState,
@@ -190,7 +191,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * chain's fallback (a real entry, not a chain rider, so a
      * takeover election hides rather than unmounts it and the textarea DOM
      * survives). Session-maybe: the bar stays mounted across the
-     * no-session/session transition — the no-workspace hero renders the SAME
+     * no-session/session transition — the no-session hero renders the SAME
      * textarea DOM as a read-only Workspace-picker trigger instead of a
      * parallel inert tree — with the machine hooks absent until a session is
      * current. InputBar registers
@@ -421,7 +422,11 @@ export interface ConversationInjected {
    * plugin raised one; the reason is the blocker's own localized copy, which
    * the root renders as the inert composer's placeholder.
    */
-  hooks: { composerBlock: ObservableSnapshot<ComposerBlock | undefined> }
+  hooks: {
+    composerBlock: ObservableSnapshot<ComposerBlock | undefined>
+    /** Shared brand snapshot (headline + logo) bound as useBrand. */
+    brand: ObservableSnapshot<BrandSnapshot>
+  }
 }
 
 /** Business callbacks injected into the strict Session body seat. */
@@ -468,7 +473,7 @@ export interface ComposerBarOwnerProps {
    */
   blocked?: { readonly reason: string }
   /**
-   * Inert no-workspace state: the bar locks message actions while preserving
+   * Inert no-session state: the bar locks message actions while preserving
    * its normal DOM so the Workspace pick transitions in place.
    */
   disabled?: boolean

@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, waitFor } from '@testing-library/react'
 import { SlotTestRuntime, usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
+import type { BrandSnapshot } from '@deepseek-ai/dsh-client-ui-brand/client'
 import { apply, inject } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 
 // The service reads its initial locale from the browser; these specs assert
@@ -29,13 +30,21 @@ afterEach(cleanup)
 async function bench(options: { locale?: 'en' } = {}) {
   const runtime = await SlotTestRuntime.create()
   runtime.provide('layout', { toggleSidebar: vi.fn() })
+  // The shared brand service; the shell reads the snapshot through ctx.brand.
+  // A mutable holder plus a brand/change emit drives the customized case.
+  let snapshot: BrandSnapshot = { name: '', logo: '', headline: '' }
+  runtime.provide('brand', { getBrand: () => snapshot })
   const locale = new LocaleRuntime(runtime.ctx)
   if (options.locale === 'en') locale.setLocale('en')
   runtime.provide('locale', locale)
   runtime.slots.installLocale(locale)
   await runtime.declare({ 'sidebar': { kind: 'single', scope: 'root' } })
   await runtime.mount({ inject: [...inject], apply })
-  return { runtime, locale }
+  const setBrand = (next: BrandSnapshot): void => {
+    snapshot = next
+    runtime.ctx.emit('brand/change', next)
+  }
+  return { runtime, locale, setBrand }
 }
 
 describe('sidebar shell snapshots', () => {
@@ -70,6 +79,18 @@ describe('sidebar shell snapshots', () => {
     expect(slot.container).toMatchSnapshot()
     // Same tree position: the owner flip re-rendered the shell in place.
     expect(slot.container.firstElementChild).toBe(shell)
+    await runtime.dispose()
+  })
+
+  it('renders the customized brand (logo + name) in place of the wordmark', async () => {
+    const { runtime, setBrand } = await bench({ locale: 'en' })
+    const slot = runtime.renderSlot('sidebar', { collapsed: false, width: 300 })
+    act(() => {
+      setBrand({ name: 'Acme', logo: 'data:image/png;base64,eA==', headline: '' })
+    })
+    const brand = slot.view.getAllByRole('button', { name: 'New session' })[0]!
+    expect(brand.textContent).toBe('Acme')
+    expect(slot.container).toMatchSnapshot()
     await runtime.dispose()
   })
 

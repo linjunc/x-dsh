@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
 import type {
   SidebarFooterActionOwnerProps, SidebarRootComponentProps, SidebarSectionOwnerProps,
   SidebarSettingsOwnerProps,
 } from '../src/client/contract/slots.ts'
 import { SidebarRoot } from '../src/client/SidebarRoot.tsx'
+import type { BrandSnapshot } from '@deepseek-ai/dsh-client-ui-brand/client'
 import { en } from '../src/client/locales.ts'
 
 // English-dictionary translate stub: the shell renders the same copy the
@@ -21,9 +24,12 @@ afterEach(() => {
 // props share; stub them as never-called functions.
 const neverHook = (() => { throw new Error('shell must not read global hooks') }) as never
 
-function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; width?: number } = {}) {
+function mountShell(
+  { collapsed = false, width = 300, brand }: { collapsed?: boolean; width?: number; brand?: Partial<BrandSnapshot> } = {},
+) {
   const startSession = vi.fn()
   const toggleSidebar = vi.fn()
+  const brandStore = createSnapshotStore<BrandSnapshot>({ name: '', logo: '', headline: '', ...brand })
   let regionOwner: SidebarSectionOwnerProps | undefined
   let settingsOwner: SidebarSettingsOwnerProps | undefined
   let footerActionOwner: SidebarFooterActionOwnerProps | undefined
@@ -32,7 +38,8 @@ function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; w
     <SidebarRoot
       collapsed={current.collapsed} width={current.width}
       useSessions={neverHook} useWorkspaces={neverHook}
-      startSession={startSession} toggleSidebar={toggleSidebar} t={t}
+      startSession={startSession} toggleSidebar={toggleSidebar}
+      useBrand={bindSnapshotSelector(brandStore)} t={t}
       renderSlot={((
         key: string,
         owner: SidebarFooterActionOwnerProps | SidebarSectionOwnerProps | SidebarSettingsOwnerProps,
@@ -115,5 +122,33 @@ describe('SidebarRoot shell', () => {
     const b = mountShell({ collapsed: true })
     expect(b.regionOwner().wide).toBe(false)
     expect(screen.getByRole('button', { name: 'Open sidebar' })).toBeTruthy()
+  })
+
+  it('renders the shipped wordmark while the brand carries no override', () => {
+    mountShell()
+    const brand = screen.getAllByRole('button', { name: 'New session' })[0]!
+    expect(brand.querySelector('svg')).not.toBeNull()
+    expect(brand.querySelector('img')).toBeNull()
+    expect(brand.textContent).toBe('')
+  })
+
+  it('renders a custom name with the whale mark when no logo is set', () => {
+    mountShell({ brand: { name: 'Acme' } })
+    const brand = screen.getAllByRole('button', { name: 'New session' })[0]!
+    expect(brand.textContent).toBe('Acme')
+    expect(brand.querySelector('img')).toBeNull()
+    expect(brand.querySelector('svg')).not.toBeNull()
+  })
+
+  it('renders a custom logo and name in both column states', () => {
+    const b = mountShell({ collapsed: true, brand: { name: 'Acme', logo: 'data:image/png;base64,eA==' } })
+    // Rail: the toggle rests as the custom logo.
+    const railToggle = screen.getByRole('button', { name: 'Open sidebar' })
+    const railLogo = railToggle.querySelector('img')
+    expect(railLogo?.getAttribute('src')).toBe('data:image/png;base64,eA==')
+    b.rerender({ collapsed: false })
+    const brand = screen.getAllByRole('button', { name: 'New session' })[0]!
+    expect(brand.querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,eA==')
+    expect(brand.textContent).toBe('Acme')
   })
 })

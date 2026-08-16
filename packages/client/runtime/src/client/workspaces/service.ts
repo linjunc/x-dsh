@@ -55,6 +55,8 @@ export class WorkspaceRuntime implements IWorkspaces {
   private readonly manager: WorkspaceManager
   /** In-flight blank-session creates keyed by workspace (connectWorkspace coalescing). */
   private readonly connecting = new Map<WorkspaceId, Promise<SessionId>>()
+  /** In-flight workspace-less blank-session create (connectWorkspaceless coalescing). */
+  private connectingWorkspaceless: Promise<SessionId> | undefined
   /** Guards the runtime-owned one-shot initial-selection subscription. */
   private initialSelectionStarted = false
 
@@ -116,9 +118,40 @@ export class WorkspaceRuntime implements IWorkspaces {
   }
 
   /**
+   * Resolve the session a workspace-less New Session flow lands in: reuse an
+   * existing blank session that no Workspace accounts for, else create a
+   * fresh one on the host with no `workspaceId` (the Host uses its own cwd).
+   * Mirrors {@link connectWorkspace}'s reuse-or-create shape and resolution
+   * guarantee. The reuse scan skips any session a Workspace already owns, so
+   * a workspace-backed blank stays the workspace path's to reuse.
+   * @returns the reused or newly created session id.
+   */
+  async connectWorkspaceless(): Promise<SessionId> {
+    // Coalesce concurrent connects (same rationale as connectWorkspace).
+    if (this.connectingWorkspaceless !== undefined) return this.connectingWorkspaceless
+    const items = this.list.getSnapshot().items
+    const archived = this.list.getSnapshot().archivedSessionIds
+    const sessions = this.sessions.list.getSnapshot()
+    for (const id of sessions.ids) {
+      const summary = sessions.byId[id]
+      if (summary !== undefined && summary.blank && !archived.includes(summary.id)
+        && !items.some(workspace => workspace.sessionIds.includes(summary.id))) {
+        return summary.id
+      }
+    }
+    const attempt = this.sessions.create({}).finally(() => {
+      this.connectingWorkspaceless = undefined
+    })
+    this.connectingWorkspaceless = attempt
+    return attempt
+  }
+
+  /**
    * Follow the first complete Workspace/Session baseline and select a default
    * session exactly once. A restored current session wins; otherwise the most
    * recent Workspace is connected (reusing or creating its blank session).
+   * With no Workspace registered at all, a workspace-less session is created
+   * so the user lands in a chat directly — adopting a Workspace stays optional.
    * Later explicit clears stay cleared instead of retriggering this startup
    * policy. A failed connect may retry on the next baseline projection.
    * @returns disposer for the baseline subscription; late work cannot navigate after disposal.
@@ -135,13 +168,16 @@ export class WorkspaceRuntime implements IWorkspaces {
       const workspace = this.list.getSnapshot()
       if (!workspace.baselinesReady) return
       const current = this.sessions.list.getSnapshot().current
-      const target = workspace.recentWorkspaceId
-      if (current !== undefined || target === undefined) {
+      if (current !== undefined) {
         state = 'done'
         return
       }
+      const target = workspace.recentWorkspaceId
       state = 'connecting'
-      void this.connectWorkspace(target).then(
+      const connect = target === undefined
+        ? this.connectWorkspaceless()
+        : this.connectWorkspace(target)
+      void connect.then(
         (sessionId) => {
           if (disposed) return
           if (this.sessions.list.getSnapshot().current === undefined) {
@@ -152,7 +188,7 @@ export class WorkspaceRuntime implements IWorkspaces {
         (reason: unknown) => {
           if (disposed) return
           state = 'waiting'
-          console.warn('initial workspace selection failed:', reason)
+          console.warn('initial session selection failed:', reason)
         },
       )
     }
@@ -166,26 +202,18 @@ export class WorkspaceRuntime implements IWorkspaces {
 
   /**
    * The shared New Session action behind the shell entry points (sidebar
-   * button, workspace browser): resolve the target Workspace — explicit wins,
-   * then the current Session's Workspace, then the recent-Workspace
-   * projection — connect its blank session and navigate there; with no
-   * Workspace at all, clear the selection into the New Session view state.
-   * Connect failures are non-fatal (console diagnostics; the current view
-   * stays usable).
+   * button, workspace browser): an explicit Workspace is connected; the bare
+   * New Session button always lands on a workspace-less session so the user
+   * can chat directly without inheriting a project — adopting a Workspace
+   * stays an explicit hero-chip choice. Connect failures are non-fatal
+   * (console diagnostics; the current view stays usable).
    * @param workspaceId - explicit target Workspace for scoped actions.
    */
   startSession(workspaceId?: WorkspaceId): void {
-    const workspace = this.list.getSnapshot()
-    const current = this.sessions.list.getSnapshot().current
-    const currentWorkspaceId = current === undefined
-      ? undefined
-      : workspace.items.find(item => item.sessionIds.includes(current))?.workspaceId
-    const target = workspaceId ?? currentWorkspaceId ?? workspace.recentWorkspaceId
-    if (target === undefined) {
-      this.sessions.clear()
-      return
-    }
-    void this.connectWorkspace(target).then(
+    const connect = workspaceId === undefined
+      ? this.connectWorkspaceless()
+      : this.connectWorkspace(workspaceId)
+    void connect.then(
       (sessionId) => { this.sessions.open(sessionId) },
       (reason: unknown) => { console.warn('new session failed:', reason) },
     )

@@ -1,11 +1,6 @@
-/** `sidebar` namespace dictionaries: shell controls (brand row, New Session, fold toggle). */
+/** Copy for the brand preference rows. */
 
-/** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
-  'session.new': '新会话',
-  'session.new.label': '新建会话',
-  'toggle.open': '打开侧边栏',
-  'toggle.collapse': '收起侧边栏',
   'settings.brand.title': '品牌展示',
   'settings.brand.description': '自定义页面左上角显示的名称与 Logo；全部留空则恢复默认品牌。',
   'settings.brand.nameLabel': '品牌名称',
@@ -14,17 +9,15 @@ export const zh = {
   'settings.brand.logoChange': '更换图片',
   'settings.brand.logoClear': '清除',
   'settings.brand.logoTooLarge': '图片大小不能超过 256KB，请更换后重试。',
+  'settings.hero.title': '主标题',
+  'settings.hero.description': '自定义空会话页面中间显示的标题；留空则恢复默认。',
+  'settings.hero.label': '主标题',
+  'settings.hero.placeholder': '输入自定义标题',
 } satisfies Record<string, string>
 
-/** The sidebar namespace key union. */
-export type SidebarKey = keyof typeof zh
+export type BrandKey = keyof typeof zh
 
-/** English dictionary, checked complete against the zh key set. */
-export const en = {
-  'session.new': 'New Session',
-  'session.new.label': 'New session',
-  'toggle.open': 'Open sidebar',
-  'toggle.collapse': 'Collapse sidebar',
+export const en: Record<BrandKey, string> = {
   'settings.brand.title': 'Brand',
   'settings.brand.description': 'Customize the name and logo shown at the top-left of the page; leave both empty to restore the default brand.',
   'settings.brand.nameLabel': 'Brand name',
@@ -33,4 +26,8 @@ export const en = {
   'settings.brand.logoChange': 'Change image',
   'settings.brand.logoClear': 'Clear',
   'settings.brand.logoTooLarge': 'The image must be 256KB or smaller. Choose another one.',
-} satisfies Record<SidebarKey, string>
+  'settings.hero.title': 'Headline',
+  'settings.hero.description': 'Customize the headline shown in the middle of an empty session; leave empty for the default.',
+  'settings.hero.label': 'Headline',
+  'settings.hero.placeholder': 'Enter a custom headline',
+}

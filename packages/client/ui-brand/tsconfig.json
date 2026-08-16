@@ -9,28 +9,22 @@
   ],
   "references": [
     {
-      "path": "../../../vendor/cordis"
+      "path": "../runtime"
     },
     {
       "path": "../ui-slots"
     },
     {
-      "path": "../ui-primitives"
-    },
-    {
-      "path": "../web-react"
-    },
-    {
-      "path": "../runtime"
-    },
-    {
-      "path": "../ui-layout"
-    },
-    {
-      "path": "../ui-brand"
+      "path": "../ui-settings"
     },
     {
       "path": "../locale"
+    },
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../settings/settings"
     },
     {
       "path": "../../runtime-diagnostics/invariants"

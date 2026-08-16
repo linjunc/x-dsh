@@ -51,6 +51,7 @@ async function bench() {
   // The plugin injects both; these specs exercise no settings path.
   runtime.provide('remote', { $on: () => () => {} })
   runtime.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
+  runtime.provide('brand', { getBrand: () => ({ name: '', logo: '', headline: '' }) })
   const sessionFake = sessionFakeFor()
   await runtime.sessions.add({
     id: ROOT,

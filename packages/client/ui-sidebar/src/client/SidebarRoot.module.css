@@ -124,6 +124,32 @@
   cursor: pointer;
 }
 
+/* Custom brand parts (the durable ui-sidebar settings section): the logo
+   keeps the mark's 24px box; the name truncates inside the brand button's
+   overflow. */
+.brandLogo {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+.brandMark {
+  flex: none;
+}
+
+.brandName {
+  margin-left: 8px;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--dsw-alias-label-primary);
+}
+
 .iconButton {
   flex: none;
   display: inline-flex;

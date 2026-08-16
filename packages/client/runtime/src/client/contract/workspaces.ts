@@ -21,9 +21,16 @@ export interface IWorkspaces {
    */
   connectWorkspace(workspaceId: WorkspaceId): Promise<SessionId>
   /**
+   * Connect a workspace-less New Session flow to its reusable or freshly
+   * created blank session (no `workspaceId` — the Host uses its own cwd).
+   * @returns the connected session id.
+   */
+  connectWorkspaceless(): Promise<SessionId>
+  /**
    * The New Session flow: connect the explicit, current-Session, or recent
-   * Workspace and open the resulting session; failures surface on the session
-   * list state.
+   * Workspace and open the resulting session; with no Workspace registered,
+   * connect a workspace-less session so the user can chat directly. Failures
+   * surface on the session list state.
    * @param workspaceId - explicit target; omitted inherits the current
    * Session's Workspace before falling back to the recency projection.
    */

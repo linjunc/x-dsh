@@ -6,7 +6,7 @@
  * bar reads its own session's store. A block carries the localized reason it
  * exists, because the plugin that raised it owns that copy; the composer only
  * knows how to render an inert textarea with a placeholder, exactly as it
- * already does for a session with no workspace.
+ * already does when no Session is selected.
  *
  * This is an affordance, not enforcement: the Host refuses a prompt it cannot
  * route regardless of what any client disables.

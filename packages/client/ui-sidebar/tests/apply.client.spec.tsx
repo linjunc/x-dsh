@@ -3,8 +3,12 @@ import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
+import type { BrandSnapshot } from '@deepseek-ai/dsh-client-ui-brand/client'
 import { apply, inject } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { SidebarRootInjected } from '@deepseek-ai/dsh-client-ui-sidebar/client'
+
+/** Brand service stub: the shell only reads the snapshot through ctx.brand. */
+const brandStub = { getBrand: (): BrandSnapshot => ({ name: '', logo: '', headline: '' }) }
 
 async function bench(declare = true) {
   const ctx = new Context()
@@ -16,10 +20,14 @@ async function bench(declare = true) {
   ctx.provide('sessions', sessions as never)
   ctx.provide('workspaces', workspaces as never)
   ctx.provide('locale', new LocaleRuntime(ctx))
+  ctx.provide('brand', brandStub)
   const slots = ctx.get('slots') as SlotRegistry
   if (declare) {
     slots.register(
-      { name: 'root', children: { 'sidebar': { kind: 'single', scope: 'root' } } } as never,
+      {
+        name: 'root',
+        children: { 'sidebar': { kind: 'single', scope: 'root' } },
+      } as never,
       () => null,
     )
   }
@@ -28,7 +36,7 @@ async function bench(declare = true) {
 
 describe('ui-sidebar apply', () => {
   it('declares only the services it uses', () => {
-    expect(inject).toEqual(['slots', 'layout', 'sessions', 'workspaces', 'locale'])
+    expect(inject).toEqual(['slots', 'layout', 'sessions', 'workspaces', 'locale', 'brand'])
   })
 
   it('registers the shell and declares its child seats', async () => {
@@ -41,7 +49,9 @@ describe('ui-sidebar apply', () => {
     // Copy rides the standard locale seat, not the inject face.
     expect(b.slots.entries('sidebar')[0]!.locale).toBe('sidebar')
     const injected = (b.slots.entries('sidebar')[0]!.inject as () => SidebarRootInjected)()
-    expect(Object.keys(injected)).toEqual(['startSession', 'toggleSidebar'])
+    expect(Object.keys(injected)).toEqual(['startSession', 'toggleSidebar', 'hooks'])
+    // The brand hook mirrors the shared snapshot (empty default).
+    expect(injected.hooks.brand.getSnapshot()).toEqual({ name: '', logo: '', headline: '' })
     // Both arms delegate to the runtime's shared New Session action.
     injected.startSession('workspace' as never)
     expect(b.workspaces.startSession).toHaveBeenCalledWith('workspace')

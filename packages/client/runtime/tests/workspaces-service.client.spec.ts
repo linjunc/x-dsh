@@ -295,6 +295,67 @@ describe('WorkspaceRuntime', () => {
     expect(api.callsOf('session.create')).toEqual([])
   })
 
+  it('connectWorkspaceless reuses a blank session no Workspace accounts for, else creates and coalesces', async () => {
+    const ctx = new Context()
+    const api = new FakeApiClient()
+    const sessions = new SessionRuntime(ctx, api, fakeRemote())
+    const workspaces = new WorkspaceRuntime(ctx, api, sessions)
+    api.onWorkspaceList = () => Promise.resolve(ok({
+      items: [workspace('alpha', [sid('s-member-blank')])] as never[],
+    }))
+    api.onList = () => Promise.resolve(ok({
+      items: [
+        // A blank session a Workspace already accounts for: the workspace-less
+        // path must not reuse it (connectWorkspace owns member blanks).
+        { sessionId: sid('s-member-blank'), updatedAt: 1, running: false, blank: true, cwd: '/w/alpha' },
+        // A sent workspace-less session: never reused.
+        { sessionId: sid('s-sent'), updatedAt: 2, running: false, blank: false },
+        // A blank session no Workspace accounts for: the reuse hit.
+        { sessionId: sid('s-stray'), updatedAt: 3, running: false, blank: true },
+      ] as never[],
+    }))
+    await Promise.all([workspaces.refresh(), sessions.refresh()])
+    await Promise.resolve()
+
+    // Hit: the unaccounted blank comes back; a member blank and a sent
+    // session are both skipped. No create RPC.
+    await expect(workspaces.connectWorkspaceless()).resolves.toBe('s-stray')
+    expect(api.callsOf('session.create')).toEqual([])
+
+    // An archived blank is never reused: archiving s-stray removes the only
+    // reusable surface, so New Session mints a fresh workspace-less session
+    // on the host with no workspaceId.
+    await workspaces.archiveSession(sid('s-stray'))
+    api.onCreate = () => Promise.resolve(ok({ sessionId: sid('s-fresh') }))
+    await expect(workspaces.connectWorkspaceless()).resolves.toBe('s-fresh')
+    expect(api.callsOf('session.create')).toEqual([{}])
+
+    // Coalesce: concurrent connects share the in-flight create (no double
+    // mint). A world with no reusable blank (only a sent session) forces the
+    // create arm; the second call returns the same in-flight promise.
+    const emptyCtx = new Context()
+    const emptyApi = new FakeApiClient()
+    const emptySessions = new SessionRuntime(emptyCtx, emptyApi, fakeRemote())
+    const emptyWorkspaces = new WorkspaceRuntime(emptyCtx, emptyApi, emptySessions)
+    emptyApi.onWorkspaceList = () => Promise.resolve(ok({ items: [] as never[] }))
+    emptyApi.onList = () => Promise.resolve(ok({
+      items: [{ sessionId: sid('s-sent-2'), updatedAt: 1, running: false, blank: false }] as never[],
+    }))
+    await Promise.all([emptyWorkspaces.refresh(), emptySessions.refresh()])
+    await Promise.resolve()
+    const gate = deferred<Awaited<ReturnType<FakeApiClient['onCreate']>>>()
+    emptyApi.onCreate = () => gate.promise
+    const a = emptyWorkspaces.connectWorkspaceless()
+    const b = emptyWorkspaces.connectWorkspaceless()
+    gate.resolve(ok({ sessionId: sid('s-coalesced') }))
+    await expect(a).resolves.toBe('s-coalesced')
+    await expect(b).resolves.toBe('s-coalesced')
+    expect(emptyApi.callsOf('session.create')).toEqual([{}])
+    // The freshly created blank is now the reuse hit for the next New Session.
+    await expect(emptyWorkspaces.connectWorkspaceless()).resolves.toBe('s-coalesced')
+    expect(emptyApi.callsOf('session.create')).toEqual([{}])
+  })
+
   it('returns created Workspaces and preserves Host business errors', async () => {
     const ctx = new Context()
     const api = new FakeApiClient()
@@ -399,7 +460,10 @@ describe('WorkspaceRuntime', () => {
     await expect(workspaces.insertBefore(wid('ghost'))).rejects.toThrow(/workspace-not-found: gone/)
   })
 
-  it('targets New Session at explicit, current-session, then recent Workspaces and clears with none', async () => {
+  it('connects an explicit Workspace from New Session and lands bare calls on a workspace-less session', async () => {
+    // The bare New Session button always lands on a workspace-less session —
+    // it must never inherit the current Session's Workspace nor the recent
+    // projection. Adopting a Workspace stays an explicit hero-chip choice.
     const ctx = new Context()
     const api = new FakeApiClient()
     const sessions = new SessionRuntime(ctx, api, fakeRemote())
@@ -419,27 +483,42 @@ describe('WorkspaceRuntime', () => {
     sessions.open(sid('current'))
     const unresolved = new Promise<SessionId>(() => {})
     const connect = vi.spyOn(workspaces, 'connectWorkspace').mockReturnValue(unresolved)
+    const connectLess = vi.spyOn(workspaces, 'connectWorkspaceless').mockResolvedValue(sid('current'))
 
+    // Explicit target wins.
     workspaces.startSession(wid('recent-home'))
     await Promise.resolve()
     expect(connect).toHaveBeenLastCalledWith(wid('recent-home'))
+    expect(connectLess).not.toHaveBeenCalled()
 
+    // Bare New Session ignores the current Session's Workspace — no new
+    // connectWorkspace call beyond the explicit one above.
     workspaces.startSession()
     await Promise.resolve()
-    expect(connect).toHaveBeenLastCalledWith(wid('current-home'))
+    expect(connectLess).toHaveBeenCalledOnce()
+    expect(connect).toHaveBeenCalledTimes(1)
 
+    // Bare New Session also ignores the recent projection.
     sessions.clear()
     workspaces.startSession()
     await Promise.resolve()
-    expect(connect).toHaveBeenLastCalledWith(wid('recent-home'))
+    expect(connectLess).toHaveBeenCalledTimes(2)
+    expect(connect).toHaveBeenCalledTimes(1)
 
+    // A world with no Workspace registered at all is the same workspace-less
+    // landing: no clear, and session.create is called with `{}` so the Host
+    // births the session at its own cwd.
     const emptyCtx = new Context()
     const emptyApi = new FakeApiClient()
     const emptySessions = new SessionRuntime(emptyCtx, emptyApi, fakeRemote())
     const emptyWorkspaces = new WorkspaceRuntime(emptyCtx, emptyApi, emptySessions)
     const clear = vi.spyOn(emptySessions, 'clear')
+    const open = vi.spyOn(emptySessions, 'open')
     emptyWorkspaces.startSession()
-    expect(clear).toHaveBeenCalledOnce()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(clear).not.toHaveBeenCalled()
+    expect(emptyApi.callsOf('session.create')).toEqual([{}])
+    expect(open).toHaveBeenCalledWith('fk-new' as SessionId)
   })
 
   it('archives a session, projects the set from the response, list, and frame, and clears only the current one', async () => {
@@ -549,7 +628,7 @@ describe('startInitialSelection', () => {
     stop()
   })
 
-  it('stays idle when a session is already current or no recent Workspace exists', async () => {
+  it('stays idle when a session is already current, and creates a workspace-less session when no Workspace is registered', async () => {
     const withCurrent = bench()
     withCurrent.api.onList = () => Promise.resolve(ok({
       items: [{ sessionId: sid('s1'), updatedAt: 1, running: false, blank: false }] as never[],
@@ -568,7 +647,8 @@ describe('startInitialSelection', () => {
     await noRecent.workspaces.refresh()
     await noRecent.sessions.refresh()
     await new Promise(resolve => setTimeout(resolve, 0))
-    expect(noRecent.api.callsOf('session.create')).toHaveLength(0)
+    expect(noRecent.api.callsOf('session.create')).toEqual([{}])
+    expect(noRecent.sessions.list.getSnapshot().current).toBe('fk-new' as SessionId)
     expect(() => noRecent.workspaces.startInitialSelection()).toThrow(/already started/)
     stopEmpty()
   })
